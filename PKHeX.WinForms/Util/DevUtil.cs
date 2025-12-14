@@ -127,6 +127,7 @@ public static class DevUtil
                 text.AppendLine($"- {p.Plugin.Name}");
         }
 
+
         WinFormsUtil.Alert(text.ToString());
     }
 

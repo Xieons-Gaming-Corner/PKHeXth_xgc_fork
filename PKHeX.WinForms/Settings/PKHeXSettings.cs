@@ -48,6 +48,7 @@ public sealed class PKHeXSettings : IProgramSettings
     [Browsable(false)]
     public SlotExportSettings SlotExport { get; set; } = new();
 
+
     [Browsable(false), JsonIgnore]
     IStartupSettings IProgramSettings.Startup => Startup;
 
