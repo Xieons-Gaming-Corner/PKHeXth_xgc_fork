@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace PKHeX.Core;
@@ -5,6 +6,7 @@ namespace PKHeX.Core;
 /// <summary>
 /// Stores the selected facial appearances of the player.
 /// </summary>
+[TypeConverter(typeof(ExpandableObjectConverter))]
 public sealed class PlayerAppearance9(SAV9SV sav, SCBlock block) : SaveBlock<SAV9SV>(sav, block.Raw)
 {
     public ulong SkinColor     { get => ReadUInt64LittleEndian(Data); set => WriteUInt64LittleEndian(Data, value); }
