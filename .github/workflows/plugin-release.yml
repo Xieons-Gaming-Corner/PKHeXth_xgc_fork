@@ -84,11 +84,15 @@ jobs:
           BASE_VERSION: ${{ steps.version.outputs.BASE_VERSION }}
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
 
           $baseVersion = $env:BASE_VERSION
 
-          # Read every release page rather than limiting revision detection
-          # to the first 100 releases.
+          if ([string]::IsNullOrWhiteSpace($baseVersion)) {
+            throw "BASE_VERSION is empty."
+          }
+
+          # Fetch every release page.
           $releaseJson = gh api --paginate --slurp `
             "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
 
@@ -97,7 +101,8 @@ jobs:
           }
 
           $pages = ConvertFrom-Json -InputObject ($releaseJson -join "`n")
-          $tags = @(
+
+          $releaseTags = @(
             foreach ($page in $pages) {
               foreach ($release in $page) {
                 if ($release.tag_name) {
@@ -107,15 +112,34 @@ jobs:
             }
           )
 
+          # List all remote tags. An empty result is valid;
+          # authentication or network failures still stop the workflow.
+          $remoteTagLines = @(git ls-remote --tags --refs origin)
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to list remote Git tags."
+          }
+
+          $remoteTags = @(
+            foreach ($line in $remoteTagLines) {
+              if ($line -match '\srefs/tags/(.+)$') {
+                [string]$Matches[1]
+              }
+            }
+          )
+
+          # Include release records and Git tags when choosing a revision.
+          $allTags = @($releaseTags) + @($remoteTags)
+
           $baseExists = (
-            $tags -contains $baseVersion -or
-            $tags -contains "v$baseVersion"
+            $allTags -contains $baseVersion -or
+            $allTags -contains "v$baseVersion"
           )
 
           $latestRevision = 0
           $pattern = "^v?$([regex]::Escape($baseVersion))-rev\.(\d+)$"
 
-          foreach ($tag in $tags) {
+          foreach ($tag in $allTags) {
             if ($tag -match $pattern) {
               $latestRevision = [Math]::Max(
                 $latestRevision,
@@ -134,31 +158,13 @@ jobs:
 
           $buildVersion = "${baseVersion}.${revision}"
 
-          # Skip tags that already exist even if they have no release.
-          while ($true) {
-            $null = git ls-remote --exit-code --tags origin `
-              "refs/tags/$releaseVersion"
-
-            $status = $LASTEXITCODE
-
-            if ($status -eq 2) {
-              break
-            }
-
-            if ($status -ne 0) {
-              throw "Failed to check whether tag '$releaseVersion' exists."
-            }
-
-            $revision++
-            $releaseVersion = "${baseVersion}-rev.${revision}"
-            $buildVersion = "${baseVersion}.${revision}"
-          }
-
           "RELEASE_VERSION=$releaseVersion" >> $env:GITHUB_OUTPUT
           "BUILD_VERSION=$buildVersion" >> $env:GITHUB_OUTPUT
 
           Write-Host "Release tag: $releaseVersion"
           Write-Host "Assembly version: $buildVersion"
+
+          exit 0
 
       - name: Restore dependencies
         run: |
