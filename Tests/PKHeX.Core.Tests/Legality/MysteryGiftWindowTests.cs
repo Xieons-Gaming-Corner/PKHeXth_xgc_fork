@@ -44,6 +44,7 @@ public class MysteryGiftWindowTests
     [Theory]
     [InlineData(0105, 2026, 10, 31, 2028, 02, 01)] // PokéCenter Audino
     [InlineData(1616, 2026, 11, 05, 2027, 02, 26)] // Poké Ball Pattern Vivillon
+    [InlineData(1613, 2026, 11, 11, 2027, 01, 08)] // Shiny Xerneas
     public void WA9GiftIsLegalOnlyInsideWindow(int cardID, int y0, int m0, int d0, int y1, int m1, int d1)
     {
         var card = EncounterEvent.MGDB_G9A.First(z => z.CardID == cardID);
@@ -57,6 +58,33 @@ public class MysteryGiftWindowTests
         var card = EncounterEvent.MGDB_G9.First(z => z.CardID == 0072);
         var tr = new SimpleTrainerInfo(GameVersion.SL) { Language = (byte)LanguageID.Japanese };
         CheckWindow(card.ConvertToPKM(tr), new(2026, 10, 31), new(2028, 02, 01));
+    }
+
+    // PID type 2 means "always shiny": the game rolls the PID until it is shiny, so a real one can be
+    // star or square (a dumped 11/13/2026 copy is square). Only a non-shiny PID is wrong.
+    [Fact]
+    public void WA9ShinyXerneasIsAnyShiny()
+    {
+        var card = EncounterEvent.MGDB_G9A.First(z => z.CardID == 1613);
+        card.Shiny.Should().Be(Shiny.Always);
+        var tr = new SimpleTrainerInfo(GameVersion.ZA) { Language = (byte)LanguageID.English };
+        var pk = card.ConvertToPKM(tr);
+        pk.IsShiny.Should().BeTrue();
+        var la = new LegalityAnalysis(pk);
+        la.Valid.Should().BeTrue(la.Report());
+
+        var star = pk.Clone();
+        star.PID = (star.PID & 0xFFFF) | ((1u ^ (star.PID & 0xFFFF) ^ star.TID16 ^ star.SID16) << 16);
+        new LegalityAnalysis(star).Valid.Should().BeTrue();
+
+        var square = pk.Clone();
+        square.PID = (square.PID & 0xFFFF) | ((0u ^ (square.PID & 0xFFFF) ^ square.TID16 ^ square.SID16) << 16);
+        new LegalityAnalysis(square).Valid.Should().BeTrue();
+
+        var plain = pk.Clone();
+        plain.PID ^= 0x1000_0000;
+        plain.IsShiny.Should().BeFalse();
+        new LegalityAnalysis(plain).Valid.Should().BeFalse();
     }
 
     private static void CheckWindow(PKM pk, DateOnly first, DateOnly last)
